@@ -1,3 +1,5 @@
+import urllib.parse
+import aiohttp
 import discord
 from discord import app_commands
 
@@ -7,22 +9,23 @@ class StickerBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        #syncs the commands globally so they work across your account
+        # Fetch the file list from ChineseBQB on startup
+        url = "https://api.github.com/repos/zhaoolee/ChineseBQB/git/trees/master?recursive=1"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                data = await resp.json()
+                for item in data.get("tree", []):
+                    path = item.get("path", "")
+                    if item.get("type") == "blob" and path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                        name = path.rsplit(".", 1)[0].lower()
+                        STICKERS[name] = f"https://raw.githubusercontent.com/zhaoolee/ChineseBQB/master/{urllib.parse.quote(path)}"
+
+        # syncs the commands globally so they work across your account
         await self.tree.sync()
 
 client = StickerBot()
 
-STICKERS = {
-    "cat1": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/cat1.png",
-    "lm-ao": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/lm-ao.png",
-    "what": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/what.png",
-    "chipmunk": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/chipmunk.png",
-    "cat-blush": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/cat-blush.png",
-    "T-T": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/T-T.png",
-    "he": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/he.png",
-    "beer": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/beer.png",
-    "tsingtao": "https://file.garden/ZmE9PiOgiFXI9Y4Y/weixintietu/tsingtao.jpeg",
-}
+STICKERS = {}
 
 # autocomplete function for /weixin
 async def sticker_autocomplete(
@@ -30,7 +33,7 @@ async def sticker_autocomplete(
     current: str,
 ) -> list[app_commands.Choice[str]]:
     choices = [
-        app_commands.Choice(name=name, value=name)
+        app_commands.Choice(name=name[-100:], value=name[-100:])
         for name in STICKERS.keys() if current.lower() in name.lower()
     ]
     return choices[:25]
@@ -56,10 +59,11 @@ async def weixin(interaction: discord.Interaction, name: str):
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def stickers_directory(interaction: discord.Interaction):
-    sticker_list = ", ".join([f"`{name}`" for name in STICKERS.keys()])
+    # Capped at 50 items to stay under Discord's 2000-character message limit
+    sticker_list = ", ".join([f"`{name}`" for name in list(STICKERS.keys())[:50]])
     
     directory_message = (
-        "**可用的微信貼圖:**\n"
+        f"**可用的微信貼圖 (前 50 / 共 {len(STICKERS)} 個):**\n"
         f"{sticker_list}\n\n"
         "使用 `/weixin [name]` 來發送一個!"
     )
